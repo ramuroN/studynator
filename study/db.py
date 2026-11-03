@@ -138,6 +138,12 @@ MIGRATIONS = [
         "ALTER TABLE users ADD COLUMN accent TEXT",
         "ALTER TABLE users ADD COLUMN background INTEGER",
     ],
+    # 5, 03.11.2026: Planung pro Kurs; NULL heisst ohne Prüfung bzw. Standard
+    # aus STUDY_NEW_PER_DAY.
+    [
+        "ALTER TABLE decks ADD COLUMN exam_date TEXT",
+        "ALTER TABLE decks ADD COLUMN new_per_day INTEGER",
+    ],
 ]
 
 

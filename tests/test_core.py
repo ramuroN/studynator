@@ -226,6 +226,7 @@ class DbTests(TempEnv):
         self.assertIn("suspended", {r["name"] for r in conn.execute("PRAGMA table_info(cards)")})
         self.assertIn("prev", {r["name"] for r in conn.execute("PRAGMA table_info(reviews)")})
         self.assertTrue({"accent", "background"} <= {r["name"] for r in conn.execute("PRAGMA table_info(users)")})
+        self.assertTrue({"exam_date", "new_per_day"} <= {r["name"] for r in conn.execute("PRAGMA table_info(decks)")})
         conn.close()
 
     def test_snapshot_once_per_day(self):

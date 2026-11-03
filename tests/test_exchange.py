@@ -166,6 +166,7 @@ class ExportRoundTripTests(TempEnv):
     def test_backup_round_trip(self):
         last = self.client.post("/cards/3/suspend", data={"on": 1}, headers=ALICE)
         self.assertEqual(last.status_code, 303)
+        self.client.post("/decks/1/plan", data={"exam_date": "2027-01-20", "new_per_day": "7"}, headers=ALICE)
         raw = self.client.get("/decks/1/export.zip", headers=ALICE).content
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
             data = json.loads(zf.read("deck.json"))
@@ -181,6 +182,7 @@ class ExportRoundTripTests(TempEnv):
         deck = conn.execute("SELECT * FROM decks WHERE id = ?", (new_deck,)).fetchone()
         self.assertEqual(deck["name"], "Recht & Staat (Import)")
         self.assertEqual(deck["instructions"], "Artikel nennen.")
+        self.assertEqual((deck["exam_date"], deck["new_per_day"]), ("2027-01-20", 7))
         old = conn.execute("SELECT front, due, reps, fsrs, suspended FROM cards WHERE deck_id = 1 ORDER BY id").fetchall()
         new = conn.execute("SELECT front, due, reps, fsrs, suspended, page_id FROM cards WHERE deck_id = ? ORDER BY id",
                            (new_deck,)).fetchall()

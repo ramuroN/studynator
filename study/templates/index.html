@@ -17,6 +17,11 @@
   {% endif %}
 </section>
 
+{% if all_counts.total %}
+{% set show_streak = true %}
+{% include "_stats.html" %}
+{% endif %}
+
 <section>
   <h2>Kurse</h2>
   <div class="deck-grid">
@@ -26,6 +31,11 @@
       <span class="pills">
         <span class="pill due {% if not row.counts.due %}zero{% endif %}">{{ row.counts.due }} fällig</span>
         <span class="pill new {% if not row.counts.new_now %}zero{% endif %}">{{ row.counts.new_now }} neu</span>
+        {% if row.plan and row.plan.exam_ahead %}
+        <span class="pill exam">Prüfung {{ "morgen" if row.plan.days_left == 1 else "in %d Tagen"|format(row.plan.days_left) }}</span>
+        {% elif row.plan and row.plan.days_left == 0 %}
+        <span class="pill exam">Prüfung heute</span>
+        {% endif %}
       </span>
       <span class="muted small">{{ row.counts.total }} {{ "Karte" if row.counts.total == 1 else "Karten" }}{% if row.open %} · {{ row.open }} Vorschläge offen{% endif %}</span>
     </a>

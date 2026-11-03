@@ -1,0 +1,45 @@
+{# Statistik für die Start- und die Kursseite; show_streak nur auf der Startseite,
+   die Serie gilt für alle Kurse. #}
+<section class="panel" id="statistik">
+  <h2>Statistik</h2>
+  <figure class="forecast">
+    <figcaption>Fällige Wiederholungen, nächste 7 Tage</figcaption>
+    {# Säulen nur fürs Auge; die Werte stehen für Screenreader in der Tabelle. #}
+    <div class="bars" aria-hidden="true">
+      {% for d in stats.forecast %}
+      <div class="bar-col">
+        <div class="bar-plot">
+          {% if d.labeled %}<span class="bar-value">{{ d.count }}</span>{% endif %}
+          {% if d.count %}<span class="bar" style="height: {{ d.height }}%"></span>{% endif %}
+        </div>
+        <span class="bar-day">{{ d.short }}</span>
+        <span class="tip">{{ d.label }}: {{ d.count }} {{ "Karte" if d.count == 1 else "Karten" }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <table class="sr-only">
+      <caption>Fällige Wiederholungen pro Tag</caption>
+      <tr><th scope="col">Tag</th><th scope="col">Karten</th></tr>
+      {% for d in stats.forecast %}<tr><td>{{ d.label }}</td><td>{{ d.count }}</td></tr>{% endfor %}
+    </table>
+  </figure>
+  <dl class="figures">
+    <div>
+      <dt>Trefferquote, 30 Tage</dt>
+      <dd>{% if stats.rate is not none %}{{ stats.rate }} %{% else %}–{% endif %}</dd>
+      <span class="muted small">{% if stats.rate is none %}ab 10 Wiederholungen{% else %}{{ stats.known }} von {{ stats.reviewed }} gewusst{% endif %}</span>
+    </div>
+    {% if show_streak %}
+    <div>
+      <dt>Lernserie</dt>
+      <dd>{{ stats.streak }} {{ "Tag" if stats.streak == 1 else "Tage" }}</dd>
+      <span class="muted small">Tage in Folge mit Lernen</span>
+    </div>
+    {% endif %}
+    <div>
+      <dt>Heute gelernt</dt>
+      <dd>{{ stats.done_today }}</dd>
+      <span class="muted small">{{ "Bewertung" if stats.done_today == 1 else "Bewertungen" }}, {{ stats.minutes_today }} min</span>
+    </div>
+  </dl>
+</section>

@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import ai, db, exchange, pdf, srs, worker
+from . import plan as planning
 from .config import Settings, get_settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -53,6 +54,8 @@ MESSAGES = {
     "undo-none": "Es gibt keine Bewertung zum Zurücknehmen.",
     "accepted-all": "Alle offenen Vorschläge übernommen.",
     "instructions-saved": "Anweisungen gespeichert; sie gelten ab den nächsten Vorschlägen.",
+    "plan-saved": "Planung gespeichert.",
+    "plan-invalid": "Planung nicht gespeichert: Datum oder Zahl ungültig.",
     "empty": "Vorder- und Rückseite dürfen nicht leer sein.",
     "imported": "{n} Karten importiert.",
     "import-empty": "Keine Datei und kein Text zum Importieren.",
@@ -135,11 +138,6 @@ def iso(dt: datetime) -> str:
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
-
-def local_day_start() -> str:
-    """Beginn des Lerntags (Mitternacht in STUDY_TZ) für das Limit neuer Karten."""
-    local = datetime.now(ZoneInfo(get_settings().tz))
-    return iso(local.replace(hour=0, minute=0, second=0, microsecond=0))
 
 
 def due_label(card: sqlite3.Row) -> str:
@@ -234,15 +232,16 @@ def own_suggestion(conn: sqlite3.Connection, user: User, suggestion_id: int) -> 
     return row
 
 
-def new_today(conn: sqlite3.Connection, user: User) -> int:
-    row = conn.execute(
-        "SELECT COUNT(*) AS n FROM reviews WHERE user_id = ? AND was_new = 1 AND reviewed_at >= ?",
-        (user.id, local_day_start()),
-    ).fetchone()
-    return row["n"]
+def deck_plans(conn: sqlite3.Connection, user: User) -> dict[int, planning.DeckPlan]:
+    """Neue Karten pro Kurs für heute: eigenes Limit oder Standard, mit
+    Prüfungsdatum mindestens das nötige Tempo."""
+    settings = get_settings()
+    return planning.deck_plans(conn, user.id, settings.new_per_day, settings.tz)
 
 
-def counts(conn: sqlite3.Connection, user: User, deck_id: int | None = None) -> dict:
+def counts(conn: sqlite3.Connection, user: User, deck_id: int | None = None,
+           plans: dict[int, planning.DeckPlan] | None = None) -> dict:
+    plans = plans if plans is not None else deck_plans(conn, user)
     where, args = "user_id = ?", [user.id]
     if deck_id is not None:
         where += " AND deck_id = ?"
@@ -255,9 +254,8 @@ def counts(conn: sqlite3.Connection, user: User, deck_id: int | None = None) -> 
         f" SUM(suspended) AS suspended FROM cards WHERE {where}",
         [now, *args],
     ).fetchone()
-    left = max(0, get_settings().new_per_day - new_today(conn, user))
-    new = row["new"] or 0
-    return {"total": row["total"], "due": row["due"] or 0, "new": new, "new_now": min(new, left),
+    new_now = sum(p.left for p in plans.values() if deck_id is None or p.deck_id == deck_id)
+    return {"total": row["total"], "due": row["due"] or 0, "new": row["new"] or 0, "new_now": new_now,
             "suspended": row["suspended"] or 0}
 
 
@@ -327,8 +325,11 @@ def render_index(request: Request, user: User, conn: sqlite3.Connection, error: 
         "WHERE d.user_id = ? AND s.status = 'open' GROUP BY d.deck_id",
         (user.id,),
     ).fetchall())
-    rows = [{"deck": d, "counts": counts(conn, user, d["id"]), "open": open_by_deck.get(d["id"], 0)} for d in decks]
-    return page(request, "index.html", user, conn, decks=rows, all_counts=counts(conn, user), message=error,
+    plans = deck_plans(conn, user)
+    rows = [{"deck": d, "counts": counts(conn, user, d["id"], plans), "open": open_by_deck.get(d["id"], 0),
+             "plan": plans.get(d["id"])} for d in decks]
+    return page(request, "index.html", user, conn, decks=rows, all_counts=counts(conn, user, plans=plans),
+                stats=planning.stats(conn, user.id, get_settings().tz), message=error,
                 status_code=400 if error else 200)
 
 
@@ -356,8 +357,28 @@ def show_deck(request: Request, deck_id: int, q: str = "", user: User = Depends(
         sql += " AND (front LIKE ? OR back LIKE ?)"
         args += [f"%{q.strip()}%"] * 2
     cards = conn.execute(sql + " ORDER BY id DESC LIMIT 500", args).fetchall()
+    plans = deck_plans(conn, user)
     return page(request, "deck.html", user, conn, deck=deck, documents=documents, cards=cards,
-                counts=counts(conn, user, deck_id), q=q, feedback=feedback_counts(conn, deck_id), ai=ai)
+                counts=counts(conn, user, deck_id, plans), q=q, feedback=feedback_counts(conn, deck_id), ai=ai,
+                plan=plans[deck_id], stats=planning.stats(conn, user.id, get_settings().tz, deck_id),
+                day_label=planning.day_label, today=planning.local_today(get_settings().tz),
+                max_new=planning.MAX_NEW_PER_DAY, review_days=planning.REVIEW_DAYS_BEFORE_EXAM)
+
+
+@app.post("/decks/{deck_id}/plan")
+def save_plan(deck_id: int, exam_date: str = Form(""), new_per_day: str = Form(""),
+              user: User = Depends(current_user), conn: sqlite3.Connection = Depends(get_conn)):
+    """Prüfungsdatum und eigenes Limit für neue Karten; leer heisst ohne bzw. Standard."""
+    own_deck(conn, user, deck_id)
+    exam_date, new_per_day = exam_date.strip(), new_per_day.strip()
+    exam = planning.parse_exam(exam_date)
+    if (exam_date and (exam is None or not 2000 <= exam.year <= 2100)) or (
+            new_per_day and not (new_per_day.isdigit() and int(new_per_day) <= planning.MAX_NEW_PER_DAY)):
+        return back(f"/decks/{deck_id}#planung", "plan-invalid")
+    conn.execute("UPDATE decks SET exam_date = ?, new_per_day = ? WHERE id = ?",
+                 (exam.isoformat() if exam else None, int(new_per_day) if new_per_day else None, deck_id))
+    conn.commit()
+    return back(f"/decks/{deck_id}#planung", "plan-saved")
 
 
 @app.post("/decks/{deck_id}/rename")
@@ -843,9 +864,19 @@ def next_card(conn: sqlite3.Connection, user: User, deck_id: int | None) -> sqli
     now = iso(utcnow())
     row = conn.execute(f"SELECT * FROM cards WHERE {where} AND reps > 0 AND due <= ? ORDER BY due LIMIT 1",
                        [*args, now]).fetchone()
-    if row is None and get_settings().new_per_day - new_today(conn, user) > 0:
-        row = conn.execute(f"SELECT * FROM cards WHERE {where} AND reps = 0 ORDER BY id LIMIT 1", args).fetchone()
-    return row
+    if row is not None:
+        return row
+    # Neue Karten nur aus Kursen mit Rest für heute, die nächste Prüfung zuerst.
+    for p in planning.new_order(deck_plans(conn, user)):
+        if deck_id is not None and p.deck_id != deck_id:
+            continue
+        row = conn.execute(
+            "SELECT * FROM cards WHERE user_id = ? AND deck_id = ? AND suspended = 0 AND reps = 0 ORDER BY id LIMIT 1",
+            (user.id, p.deck_id),
+        ).fetchone()
+        if row is not None:
+            return row
+    return None
 
 
 @app.get("/learn")
@@ -865,8 +896,10 @@ def learn(request: Request, deck: int | None = None, show: int | None = Query(No
     if suspended is not None:
         paused = conn.execute("SELECT * FROM cards WHERE id = ? AND user_id = ? AND suspended = 1",
                               (suspended, user.id)).fetchone()
-    context = {"deck": deck_row, "counts": counts(conn, user, deck), "undo": last_review(conn, user),
-               "paused": paused, "learn_key": str(deck) if deck is not None else "all"}
+    plans = deck_plans(conn, user)
+    context = {"deck": deck_row, "counts": counts(conn, user, deck, plans), "undo": last_review(conn, user),
+               "paused": paused, "learn_key": str(deck) if deck is not None else "all",
+               "plan": plans.get(deck) if deck is not None else None}
     if card is None:
         where, args = "user_id = ? AND suspended = 0 AND reps > 0 AND due > ?", [user.id, iso(utcnow())]
         if deck is not None:

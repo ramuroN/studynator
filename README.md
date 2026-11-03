@@ -42,7 +42,7 @@ python -m unittest discover -s tests -t tests
 | `STUDY_MONTHLY_BUDGET_USD` | `10` | Deckel für alle Konten zusammen pro Kalendermonat |
 | `STUDY_PAGES_PER_REQUEST` | `8` | Seiten pro API-Anfrage |
 | `STUDY_MAX_UPLOAD_MB` / `STUDY_MAX_PAGES` | `100` / `400` | Grenzen pro PDF |
-| `STUDY_NEW_PER_DAY` | `20` | neue Karten pro Person und Tag |
+| `STUDY_NEW_PER_DAY` | `20` | Standard für neue Karten pro Kurs und Tag; pro Kurs unter «Planung» änderbar |
 | `STUDY_TZ` | `Europe/Zurich` | Beginn des Lerntags |
 
 ## Lernen und Prüfen
@@ -52,6 +52,12 @@ python -m unittest discover -s tests -t tests
 - **Aussetzen:** Die Karte behält ihren Lernstand, kommt aber nicht mehr dran, bis sie wieder aufgenommen wird (direkt nach dem Aussetzen oder auf der Kartenseite). In der Sicherung als `suspended`.
 - Doppelt abgeschickte Bewertungen (zweimal getippt) zählen nur einmal; «Bearbeiten» beim Lernen führt nach dem Speichern zur selben Karte zurück.
 - **Vorschläge prüfen:** Übernehmen und Verwerfen ohne Neuladen. Tasten: `J`/`K` nächster und vorheriger Vorschlag, `A` übernehmen, `V` verwerfen, `E` bearbeiten; im Feld `Ctrl`+`Enter` übernimmt, `Esc` verlässt es.
+
+## Planung und Statistik
+
+Jeder Kurs hat unter «Planung» ein Prüfungsdatum und ein eigenes Limit für neue Karten pro Tag (leer: kein Datum bzw. `STUDY_NEW_PER_DAY`). Mit Prüfungsdatum gilt mindestens das nötige Tempo: alle neuen Karten verteilt auf die Tage bis drei Tage vor der Prüfung, die letzten drei Tage bleiben zum Wiederholen. Ein höheres eigenes Limit gilt weiter; mit Limit 0 und Datum gilt genau das nötige Tempo. Was heute schon neu dran war, zählt zum Tag. Beim Lernen über alle Kurse kommen zuerst die fälligen Wiederholungen, dann neue Karten aus dem Kurs mit der nächsten Prüfung. Die Rechnung steht in `study/plan.py`.
+
+Start- und Kursseite zeigen dazu die fälligen Wiederholungen der nächsten sieben Tage (Überfälliges zählt zu heute), die Trefferquote der letzten 30 Tage (nur Karten im Wiederholungsmodus, ab 10 Wiederholungen), die Lernserie (Tage in Folge mit mindestens einer Bewertung) und was heute gelernt wurde. Tage sind Kalendertage in `STUDY_TZ`.
 
 ## Farben
 
@@ -72,7 +78,7 @@ Auf der Kursseite unter «Import und Export»:
 - **Tabelle (CSV):** Strichpunkt, Überschrift, UTF-8 mit BOM; öffnet Excel direkt. Zellen, die mit `=`, `+`, `-` oder `@` beginnen, bekommen ein `'` davor; der eigene Import nimmt es wieder weg.
 - **RemNote (Markdown):** RemNote-Textsyntax: `- Frage >> Antwort`, mehrzeilige Antworten als `>>>` mit Unterpunkten, Lücken `{{…}}` (Zusatz als Unterpunkt). In RemNote als Markdown importieren oder einfügen.
 - **GoodNotes / Quizlet (TSV):** Frage Tab Antwort, keine Überschrift (so verlangt es GoodNotes für Study Sets), nur Text ohne `**` und Backticks; Lücken werden zu `[…]` vorne und dem Wort hinten. GoodNotes exportiert Study Sets nur im eigenen `.goodnotes`-Format, darum gibt es keinen Import aus GoodNotes.
-- **Sicherung (ZIP):** `deck.json` (Format `studynator-deck`, Version 1) mit Anweisungen, Karten samt FSRS-Stand, Status «ausgesetzt» (seit 03.11.2026, fehlt in älteren Dateien) und Bewertungen, dazu die Folienbilder der Karten. Auf der Startseite («Sicherung einlesen») wird daraus ein neuer Kurs; Original-PDFs und offene Vorschläge sind nicht enthalten.
+- **Sicherung (ZIP):** `deck.json` (Format `studynator-deck`, Version 1) mit Anweisungen, Planung (Prüfungsdatum, Limit; fehlt in älteren Dateien), Karten samt FSRS-Stand, Status «ausgesetzt» (seit 03.11.2026, fehlt in älteren Dateien) und Bewertungen, dazu die Folienbilder der Karten. Auf der Startseite («Sicherung einlesen») wird daraus ein neuer Kurs; Original-PDFs und offene Vorschläge sind nicht enthalten.
 - **Import aus RemNote-Text** (Rems kopieren und einfügen oder RemNote-Markdown hochladen): erkannt werden `>>`, `==`, `::`, `;;` (vorwärts), `<<` (rückwärts), `<>` (beidseitig, zwei Karten), `>-` (ausgeschaltet, übersprungen), `>>>`/`<<<`/`<><` mit Unterpunkten, Lücken `{{…}}` (pro Lücke eine Karte, Hinweise `{({…})}` fallen weg). Quelle: RemNote-Hilfe «How to import flashcards from text», abgerufen 03.11.2026.
 - **Import aus CSV, TSV oder eingefügtem Text** (z. B. Quizlet, Anki «Notes in Plain Text»): Vorschau mit Trennzeichen, Überschrift und Spaltenwahl; Doppelte (gleiche Vorderseite im Kurs) werden übersprungen; Anki-Lückentext `{{c1::…}}` wird pro Lücke eine Karte, HTML aus Anki wird Text. Importierte Karten beginnen als neu.
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import ai, db, pdf, srs
+from . import ai, db, pdf, plan, srs
 
 TYPE_LABELS = {"basic": "Frage/Antwort", "cloze": "Lückentext"}
 CSV_HEADER = ["Typ", "Vorderseite", "Rückseite", "Dokument", "Seite", "Fällig", "Wiederholungen", "Vergessen"]
@@ -177,7 +177,8 @@ def export_backup(conn: sqlite3.Connection, deck: sqlite3.Row, files_dir: Path, 
             "version": BACKUP_VERSION,
             "exported": db.now(),
             "app_commit": commit,
-            "deck": {"name": deck["name"], "instructions": deck["instructions"]},
+            "deck": {"name": deck["name"], "instructions": deck["instructions"], "exam_date": deck["exam_date"],
+                     "new_per_day": deck["new_per_day"]},
             "pages": page_list,
             "cards": [{
                 "type": c["type"], "front": c["front"], "back": c["back"],
@@ -478,9 +479,17 @@ def import_backup(conn: sqlite3.Connection, user_id: int, files_dir: Path, raw: 
     if conn.execute("SELECT 1 FROM decks WHERE user_id = ? AND name = ?", (user_id, name)).fetchone():
         name += " (Import)"
     instructions = str(deck_data.get("instructions") or "")[:ai.MAX_INSTRUCTIONS]
+    # Planung seit 03.11.2026; ältere Sicherungen haben sie nicht.
+    exam = plan.parse_exam(deck_data.get("exam_date") if isinstance(deck_data.get("exam_date"), str) else None)
+    new_per_day = deck_data.get("new_per_day")
+    if not (isinstance(new_per_day, int) and not isinstance(new_per_day, bool)
+            and 0 <= new_per_day <= plan.MAX_NEW_PER_DAY):
+        new_per_day = None
     now = db.now()
-    deck_id = conn.execute("INSERT INTO decks (user_id, name, instructions, created) VALUES (?, ?, ?, ?)",
-                           (user_id, name, instructions, now)).lastrowid
+    deck_id = conn.execute(
+        "INSERT INTO decks (user_id, name, instructions, exam_date, new_per_day, created) VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, name, instructions, exam.isoformat() if exam else None, new_per_day, now),
+    ).lastrowid
 
     # Seiten nach Dokument gruppieren; jedes Dokument bekommt einen Eintrag
     # ohne Original-PDF, nur mit den Seiten, auf die Karten zeigen.

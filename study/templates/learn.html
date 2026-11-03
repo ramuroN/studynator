@@ -48,7 +48,7 @@
 <section class="finished" {% if wait %}data-wait="{{ wait }}"{% endif %}>
   <h1>Fertig für jetzt</h1>
   {% if counts.new and not counts.new_now %}
-  <p class="muted">Das Tageslimit für neue Karten ({{ settings.new_per_day }}) ist erreicht.</p>
+  <p class="muted">{% if plan %}Das Tageslimit für neue Karten in diesem Kurs ({{ plan.limit }}) ist erreicht; ändern unter <a href="/decks/{{ deck.id }}#planung">Planung</a>.{% else %}Die Tageslimits für neue Karten sind erreicht; sie stehen pro Kurs unter «Planung».{% endif %}</p>
   {% endif %}
   {% if upcoming_text %}
   <p class="muted">Die nächste Karte ist in {{ upcoming_text }} fällig.{% if wait %} Die Seite lädt dann neu.{% endif %}</p>

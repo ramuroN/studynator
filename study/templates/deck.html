@@ -19,6 +19,49 @@
   {% endif %}
 </section>
 
+{% set plan_panel %}
+<section class="panel" id="planung">
+  <h2>Planung</h2>
+  <form class="plan-form" method="post" action="/decks/{{ deck.id }}/plan">
+    <label>Prüfung am
+      <input type="date" name="exam_date" value="{{ deck.exam_date or '' }}">
+    </label>
+    <label>Neue Karten pro Tag
+      <input type="number" name="new_per_day" min="0" max="{{ max_new }}" inputmode="numeric"
+             value="{{ deck.new_per_day if deck.new_per_day is not none else '' }}" placeholder="{{ settings.new_per_day }}">
+    </label>
+    <button class="primary">Speichern</button>
+  </form>
+  {% set start = plan.new + plan.introduced %}
+  <p class="plan-text">
+    {% if plan.exam_ahead %}
+    Prüfung am {{ day_label(plan.exam) }}, in {{ plan.days_left }} {{ "Tag" if plan.days_left == 1 else "Tagen" }}.
+    {% if start %}
+    Nötig {{ "ist" if plan.pace == 1 else "sind" }} <strong>{{ plan.pace }} neue pro Tag</strong>, damit alle {{ start }} neuen bis {{ day_label(plan.target, today) }} einmal dran waren{% if plan.days_left > review_days %} und die letzten {{ review_days }} Tage zum Wiederholen bleiben{% endif %}.
+    Es gelten {{ plan.limit }} pro Tag{% if plan.limit > plan.pace %} ({{ "dein Limit" if plan.custom else "der Standard" }} ist höher){% endif %}.
+    {% if plan.finish %}Letzter Tag mit neuen Karten: {{ day_label(plan.finish, today) }}.{% endif %}
+    {% else %}
+    Alle Karten waren schon einmal dran; jetzt zählt das Wiederholen.
+    {% endif %}
+    {% elif plan.exam and plan.days_left == 0 %}
+    Prüfung heute. Viel Erfolg!
+    {% else %}
+    {% if plan.exam %}Die Prüfung am {{ day_label(plan.exam) }} ist vorbei. {% endif %}
+    <strong>{{ plan.limit }} neue pro Tag</strong>{% if not plan.custom %} (Standard){% endif %}.
+    {% if plan.finish %}Letzter Tag mit neuen Karten: {{ day_label(plan.finish, today) }}.{% elif start and not plan.limit %}Mit 0 pro Tag kommen keine neuen Karten.{% endif %}
+    {% endif %}
+  </p>
+  <p class="muted small">Leer heisst ohne Prüfung bzw. Standard ({{ settings.new_per_day }} pro Tag). Mit Prüfungsdatum gilt mindestens das nötige Tempo, ein höheres Limit bleibt. Jede neue Karte bringt in den Tagen danach einige Wiederholungen mit.</p>
+</section>
+{% endset %}
+
+{% if counts.total %}
+<div class="panel-pair">
+  {{ plan_panel }}
+  {% include "_stats.html" %}
+</div>
+{% endif %}
+
 <section class="panel">
   <h2>Folien</h2>
   <form class="dropzone" method="post" action="/decks/{{ deck.id }}/upload" enctype="multipart/form-data" data-dropzone>
@@ -132,6 +175,8 @@
     </form>
   </div>
 </section>
+
+{% if not counts.total %}{{ plan_panel }}{% endif %}
 
 <section class="danger">
   <details>
