@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Import · {{ deck.name }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/">Kurse</a> · <a href="/decks/{{ deck.id }}">{{ deck.name }}</a></p>
+<section class="panel">
+  <h1>Karten importieren</h1>
+  <p class="muted">Prüfe, ob die Spalten stimmen. Importiert wird erst mit dem Knopf unten.</p>
+
+  <form class="import-settings" method="get" action="/decks/{{ deck.id }}/import/{{ token }}">
+    <label>Trennzeichen
+      <select name="delimiter">
+        {% for key, label in delimiters.items() %}
+        <option value="{{ key }}" {% if key == parsed.delimiter %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% if parsed.delimiter != "remnote" %}
+    <label>Erste Zeile
+      <select name="header">
+        <option value="yes" {% if parsed.header %}selected{% endif %}>ist Überschrift</option>
+        <option value="no" {% if not parsed.header %}selected{% endif %}>ist eine Karte</option>
+      </select>
+    </label>
+    <label>Vorderseite
+      <select name="front">
+        {% for name in parsed.columns %}
+        <option value="{{ loop.index0 }}" {% if loop.index0 == parsed.front %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Rückseite
+      <select name="back">
+        {% for name in parsed.columns %}
+        <option value="{{ loop.index0 }}" {% if loop.index0 == parsed.back %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <button>Anwenden</button>
+  </form>
+
+  <div class="stats-row import-stats">
+    <div class="stat new"><strong>{{ fresh|length }}</strong><span>werden importiert</span></div>
+    <div class="stat"><strong>{{ dupes }}</strong><span>doppelt</span></div>
+    <div class="stat"><strong>{{ parsed.no_back }}</strong><span>ohne Rückseite</span></div>
+    <div class="stat"><strong>{{ parsed.rows }}</strong><span>Zeilen</span></div>
+  </div>
+</section>
+
+{% if preview %}
+<section class="panel">
+  <h2>Vorschau{% if fresh|length > preview|length %} (die ersten {{ preview|length }}){% endif %}</h2>
+  <ul class="preview-list">
+    {% for card in preview %}
+    <li>
+      <span class="badge">{{ "Lückentext" if card.type == "cloze" else "Frage/Antwort" }}</span>
+      <div class="face math">{{ srs.render_front(card.type, card.front)|safe }}</div>
+      <div class="muted math">{{ srs.render_back(card.type, card.front, card.back)|safe }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="import-actions">
+  <form method="post" action="/decks/{{ deck.id }}/import/{{ token }}">
+    <input type="hidden" name="delimiter" value="{{ parsed.delimiter }}">
+    <input type="hidden" name="header" value="{{ 'yes' if parsed.header else 'no' }}">
+    <input type="hidden" name="front" value="{{ parsed.front }}">
+    <input type="hidden" name="back" value="{{ parsed.back }}">
+    <button class="primary big" {% if not fresh %}disabled{% endif %}>{{ fresh|length }} Karten importieren</button>
+  </form>
+  <a class="button" href="/decks/{{ deck.id }}">Abbrechen</a>
+</section>
+{% endblock %}

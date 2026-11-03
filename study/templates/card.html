@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Karte bearbeiten{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/decks/{{ deck.id }}">{{ deck.name }}</a>{% if learn %} · <a href="{{ cancel }}">zurück zum Lernen</a>{% endif %}</p>
+<h1>Karte bearbeiten</h1>
+<div class="edit">
+  <form class="card-form" method="post" action="/cards/{{ card.id }}">
+    <input type="hidden" name="learn" value="{{ learn }}">
+    {% set card_type, card_front, card_back = card.type, card.front, card.back %}
+    {% include "_card_fields.html" %}
+    <div class="actions">
+      <button class="primary">Speichern</button>
+      <a class="button ghost" href="{{ cancel }}">Abbrechen</a>
+    </div>
+  </form>
+  {% if card.page_id %}
+  <a class="thumb" href="/files/pages/{{ card.page_id }}.jpg" target="_blank" rel="noopener">
+    <img src="/files/pages/{{ card.page_id }}.jpg" alt="Folie zur Karte" loading="lazy">
+  </a>
+  {% endif %}
+</div>
+<p class="muted">
+  {% if card.suspended %}<strong>Ausgesetzt:</strong> kommt beim Lernen nicht dran. {% endif %}
+  {{ card.reps }} Wiederholungen, {{ card.lapses }} vergessen{% if card.reps %}, fällig {{ card.due[:16]|replace("T", " ") }} UTC{% endif %}.
+</p>
+<div class="card-tools">
+  <form method="post" action="/cards/{{ card.id }}/suspend">
+    <input type="hidden" name="on" value="{{ 0 if card.suspended else 1 }}">
+    <button title="Ausgesetzte Karten behalten ihren Lernstand, kommen aber nicht dran.">{{ "Wieder aufnehmen" if card.suspended else "Aussetzen" }}</button>
+  </form>
+  <form method="post" action="/cards/{{ card.id }}/delete" data-confirm="Karte mit ihrem Lernstand löschen?">
+    <button class="warn">Karte löschen</button>
+  </form>
+</div>
+{% endblock %}

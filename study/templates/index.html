@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Kurse{% endblock %}
+{% block content %}
+<section class="panel today">
+  <div>
+    <h1>Heute</h1>
+    <div class="stats-row">
+      <div class="stat due"><strong>{{ all_counts.due }}</strong><span>fällig</span></div>
+      <div class="stat new"><strong>{{ all_counts.new_now }}</strong><span>neu</span></div>
+      <div class="stat"><strong>{{ all_counts.total }}</strong><span>{{ "Karte" if all_counts.total == 1 else "Karten" }}</span></div>
+    </div>
+  </div>
+  {% if all_counts.due or all_counts.new_now %}
+  <a class="button primary big" href="/learn">Lernen starten</a>
+  {% elif all_counts.total %}
+  <p class="done-today">Für heute ist alles gelernt.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Kurse</h2>
+  <div class="deck-grid">
+    {% for row in decks %}
+    <a class="deck-tile" href="/decks/{{ row.deck.id }}">
+      <span class="name">{{ row.deck.name }}</span>
+      <span class="pills">
+        <span class="pill due {% if not row.counts.due %}zero{% endif %}">{{ row.counts.due }} fällig</span>
+        <span class="pill new {% if not row.counts.new_now %}zero{% endif %}">{{ row.counts.new_now }} neu</span>
+      </span>
+      <span class="muted small">{{ row.counts.total }} {{ "Karte" if row.counts.total == 1 else "Karten" }}{% if row.open %} · {{ row.open }} Vorschläge offen{% endif %}</span>
+    </a>
+    {% endfor %}
+    <form class="deck-tile new-deck" method="post" action="/decks">
+      <span class="name">Neuer Kurs</span>
+      <input name="name" placeholder="z. B. Biochemie I" required maxlength="120" aria-label="Name des neuen Kurses">
+      <button class="primary">Anlegen</button>
+    </form>
+    <form class="deck-tile new-deck" method="post" action="/import" enctype="multipart/form-data">
+      <span class="name">Sicherung einlesen</span>
+      <span class="muted small">ZIP aus «Import und Export» eines Kurses; wird ein neuer Kurs mit Lernstand.</span>
+      <input type="file" name="file" accept=".zip,application/zip" required aria-label="Sicherung (ZIP)">
+      <button>Einlesen</button>
+    </form>
+  </div>
+  {% if not decks %}
+  <p class="muted">Lege einen Kurs an und lade die Folien als PDF hoch. Die KI schlägt dann Karten vor, du prüfst sie und lernst.</p>
+  {% endif %}
+</section>
+{% endblock %}

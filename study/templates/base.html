@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="de"{% if theme and theme.accent %} data-accent="{{ theme.accent }}"{% endif %}{% if theme and theme.background is not none %} data-bg="{{ theme.background }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+  <title>{% block title %}Studynator{% endblock %} · Studynator</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  {# Als App auf dem Home-Bildschirm. use-credentials: Authentik lässt das Manifest sonst nicht durch. #}
+  <link rel="manifest" href="/static/manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Studynator">
+  <link rel="stylesheet" href="/static/style.css?v={{ v }}">
+  {# Ohne defer: die gewählten Farben stehen, bevor die Seite gezeichnet wird. #}
+  <script src="/static/theme.js?v={{ v }}"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/contrib/auto-render.min.js"></script>
+  <script defer src="/static/app.js?v={{ v }}"></script>
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  {% set due_now = header_counts.due + header_counts.new_now %}
+  <header class="appbar">
+    <div class="appbar-inner">
+      <a class="brand" href="/">
+        <img src="/static/icon.svg" alt="" width="30" height="30">
+        <span>Studynator</span>
+      </a>
+      <nav class="tabs" aria-label="Hauptnavigation">
+        <a class="tab {% if nav == 'home' %}active{% endif %}" href="/">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/></svg>
+          <span>Kurse</span>
+        </a>
+        <a class="tab {% if nav == 'learn' %}active{% endif %}" href="/learn">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="3.5" width="12" height="15" rx="2.2"/><path d="M4 7.5v10.3a2.2 2.2 0 0 0 2.2 2.2h9.3"/><path d="M10.5 9.5l4 1.8-4 1.8z"/></svg>
+          <span>Lernen</span>
+          {% if due_now %}<span class="count" aria-label="{{ due_now }} Karten jetzt">{{ due_now }}</span>{% endif %}
+        </a>
+      </nav>
+      <details class="theme-menu" data-theme-menu>
+        <summary title="Farben" aria-label="Farben">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8h2.1c2.1 0 3.8-1.8 3.8-4 0-3.9-3.8-7.1-8.5-7.1z"/><circle cx="7.6" cy="11.2" r="1.3"/><circle cx="10.4" cy="7.4" r="1.3"/><circle cx="15" cy="7.6" r="1.3"/></svg>
+        </summary>
+        <div class="theme-panel">
+          <div class="picker-label">
+            <span id="accent-label">Akzentfarbe</span>
+            <button type="button" class="link" data-reset="accent">Standard</button>
+          </div>
+          <div class="hue-field" data-accent-field tabindex="0" role="slider" aria-labelledby="accent-label"
+               aria-describedby="theme-hint">
+            <span class="handle"></span>
+          </div>
+          <div class="picker-label">
+            <span id="bg-label">Hintergrund</span>
+            <button type="button" class="link" data-reset="background">Wie das System</button>
+          </div>
+          <div class="gray-bar" data-bg-field tabindex="0" role="slider" aria-labelledby="bg-label"
+               aria-valuemin="0" aria-valuemax="100" aria-describedby="theme-hint">
+            <span class="handle"></span>
+          </div>
+          <p class="muted small" id="theme-hint">Punkt setzen oder ziehen; mit der Tastatur Pfeiltasten, mit Umschalt in grossen Schritten. Gilt für dein Konto auf allen Geräten.</p>
+          <p class="theme-status small" data-theme-status aria-live="polite"></p>
+        </div>
+      </details>
+      <span class="who" title="Angemeldet als {{ user.name }}">{{ user.name[:1]|upper }}</span>
+    </div>
+  </header>
+  <main>
+    {% if message %}<p class="flash" role="status">{{ message }}</p>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="bottom">
+    KI diesen Monat: {{ "%.2f"|format(spent) }} von {{ "%.2f"|format(budget) }} USD ·
+    {{ settings.ai_provider }} · {{ settings.commit }}
+  </footer>
+</body>
+</html>

@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}{{ deck.name }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/">Kurse</a></p>
+<section class="panel today">
+  <div>
+    <h1>{{ deck.name }}</h1>
+    <div class="stats-row">
+      <div class="stat due"><strong>{{ counts.due }}</strong><span>fällig</span></div>
+      <div class="stat new"><strong>{{ counts.new_now }}</strong><span>neu heute</span></div>
+      <div class="stat"><strong>{{ counts.total }}</strong><span>{{ "Karte" if counts.total == 1 else "Karten" }}</span></div>
+      {% if counts.suspended %}<div class="stat"><strong>{{ counts.suspended }}</strong><span>ausgesetzt</span></div>{% endif %}
+    </div>
+  </div>
+  {% if counts.due or counts.new_now %}
+  <a class="button primary big" href="/learn?deck={{ deck.id }}">Lernen</a>
+  {% elif counts.total %}
+  <p class="done-today">Für heute ist alles gelernt.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Folien</h2>
+  <form class="dropzone" method="post" action="/decks/{{ deck.id }}/upload" enctype="multipart/form-data" data-dropzone>
+    <input type="file" name="file" id="upload-file" accept="application/pdf,.pdf" required>
+    <label for="upload-file">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5V4.5M7.5 9 12 4.5 16.5 9"/><path d="M4.5 14.5v3.2a1.8 1.8 0 0 0 1.8 1.8h11.4a1.8 1.8 0 0 0 1.8-1.8v-3.2"/></svg>
+      <strong>PDF hierher ziehen oder antippen</strong>
+      <span class="muted small">bis {{ settings.max_upload_mb }} MB · PowerPoint vorher als PDF speichern</span>
+    </label>
+    <button class="primary">Hochladen</button>
+  </form>
+  {% if documents %}
+  <ul class="doc-list">
+    {% for d in documents %}
+    <li>
+      <a href="/documents/{{ d.id }}">
+        <span class="doc-name">{{ d.filename }}</span>
+        <span class="doc-meta">
+          <span class="status {{ d.status }}">{{ {"uploaded": "hochgeladen", "rendering": "wird vorbereitet", "rendered": "bereit", "generating": "Vorschläge laufen", "done": "fertig", "failed": "Fehler"}[d.status] }}</span>
+          <span class="muted small">{{ d.pages }} {{ "Seite" if d.pages == 1 else "Seiten" }}{% if d.open %} · {{ d.open }} Vorschläge offen{% endif %}</span>
+        </span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<section class="panel" id="anweisungen">
+  <h2>Anweisungen an die KI</h2>
+  <form class="card-form" method="post" action="/decks/{{ deck.id }}/instructions">
+    <label>Gelten für alle Vorschläge in diesem Kurs <span class="hint">z. B. Schwerpunkte, Stil, was weglassen</span>
+      <textarea name="instructions" rows="4" maxlength="{{ ai.MAX_INSTRUCTIONS }}"
+                placeholder="z. B.: Artikel immer mit Gesetz nennen (Art. 29 BV). Theorien und Abgrenzungen als Vergleichsfragen. Keine Links und keine Karten zu Organisatorischem.">{{ deck.instructions }}</textarea>
+    </label>
+    <div class="templates">
+      <span class="hint">Vorlage einsetzen:</span>
+      {% for name, text in ai.INSTRUCTION_TEMPLATES %}
+      <button type="button" class="chip" data-template="{{ text }}" title="{{ text }}" aria-label="Vorlage {{ name }}">{{ name }}</button>
+      {% endfor %}
+    </div>
+    <div class="actions"><button class="primary">Speichern</button></div>
+  </form>
+  <p class="muted small">
+    Dazu lernt die KI aus deinen Entscheiden in diesem Kurs:
+    {{ feedback.edited }} geändert, {{ feedback.kept }} unverändert übernommen, {{ feedback.rejected }} verworfen.
+    Mit jeder Anfrage gehen die jüngsten {{ ai.MAX_EDITED }} geänderten, {{ ai.MAX_KEPT }} unveränderten und {{ ai.MAX_REJECTED }} verworfenen als Beispiele mit.
+  </p>
+</section>
+
+<section class="panel">
+  <h2>Karten</h2>
+  <form class="inline search" method="get" action="/decks/{{ deck.id }}">
+    <input name="q" value="{{ q }}" placeholder="Karten durchsuchen" aria-label="Karten durchsuchen">
+    <button>Suchen</button>
+  </form>
+
+  <details class="add">
+    <summary>Karte von Hand anlegen</summary>
+    <form class="card-form" method="post" action="/decks/{{ deck.id }}/cards">
+      {% set card_type = "basic" %}
+      {% include "_card_fields.html" %}
+      <div class="actions"><button class="primary">Anlegen</button></div>
+    </form>
+  </details>
+
+  {% if cards %}
+  <ul class="card-list">
+    {% for c in cards %}
+    <li>
+      <a href="/cards/{{ c.id }}/edit">
+        <span class="math">{{ srs.plain(c.type, c.front) }}</span>
+        <span class="muted small nowrap">{{ due_label(c) }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">{% if q %}Keine Treffer.{% else %}Noch keine Karten. Lade Folien hoch oder lege eine Karte von Hand an.{% endif %}</p>
+  {% endif %}
+</section>
+
+<section class="panel" id="austausch">
+  <h2>Import und Export</h2>
+  <div class="exchange">
+    <div>
+      <h3>Exportieren</h3>
+      <div class="export-links">
+        <a class="button" href="/decks/{{ deck.id }}/export.md" download>RemNote</a>
+        <a class="button" href="/decks/{{ deck.id }}/export.tsv" download>GoodNotes / Quizlet</a>
+        <a class="button" href="/decks/{{ deck.id }}/export.csv" download>Tabelle (CSV)</a>
+        <a class="button" href="/decks/{{ deck.id }}/export.zip" download>Sicherung (ZIP)</a>
+      </div>
+      <ul class="muted small export-help">
+        <li><strong>RemNote:</strong> Markdown in RemNote-Syntax (<code>Frage &gt;&gt; Antwort</code>, Lücken <code>{{ "{{…}}" }}</code>). In RemNote über «Import» als Markdown einlesen oder den Inhalt in ein Dokument einfügen.</li>
+        <li><strong>GoodNotes / Quizlet:</strong> Frage und Antwort durch Tabulator getrennt, ohne Überschrift. In GoodNotes über «Neu → Importieren» als Study Set öffnen; in Quizlet den Inhalt beim Import einfügen. Nur Text, keine Folienbilder.</li>
+        <li><strong>Tabelle:</strong> öffnet Excel direkt (Strichpunkt).</li>
+        <li><strong>Sicherung:</strong> Karten mit Lernstand, Bewertungen, Anweisungen und Folienbildern; auf der Startseite als neuer Kurs einlesbar.</li>
+      </ul>
+    </div>
+    <form class="card-form" method="post" action="/decks/{{ deck.id }}/import" enctype="multipart/form-data">
+      <h3>Importieren</h3>
+      <label>Datei (CSV, TSV, Text oder RemNote-Markdown)
+        <input type="file" name="file" accept=".csv,.tsv,.txt,.md,text/csv,text/plain,text/markdown,text/tab-separated-values">
+      </label>
+      <label>oder Text einfügen <span class="hint">aus Quizlet (Begriff Tab Definition) oder aus RemNote (Rems kopieren)</span>
+        <textarea name="text" rows="4" placeholder="Frage&#9;Antwort&#10;Frage >> Antwort"></textarea>
+      </label>
+      <div class="actions"><button class="primary">Vorschau</button></div>
+      <p class="muted small">Du siehst zuerst, was importiert wird. Karten mit gleicher Vorderseite wie eine bestehende werden übersprungen. Erkannt werden RemNote-Syntax (<code>&gt;&gt;</code>, <code>&lt;&lt;</code>, <code>&lt;&gt;</code>, <code>::</code>, <code>&gt;&gt;&gt;</code> mit Unterpunkten, Lücken) und Anki-Lückentext (<code>{{ "{{c1::…}}" }}</code>). GoodNotes kann Study Sets nur im eigenen Format exportieren; dafür gibt es keinen Import.</p>
+    </form>
+  </div>
+</section>
+
+<section class="danger">
+  <details>
+    <summary>Kurs umbenennen oder löschen</summary>
+    <form class="inline" method="post" action="/decks/{{ deck.id }}/rename">
+      <input name="name" value="{{ deck.name }}" required maxlength="120" aria-label="Neuer Name">
+      <button>Umbenennen</button>
+    </form>
+    <form method="post" action="/decks/{{ deck.id }}/delete" data-confirm="Kurs «{{ deck.name }}» mit allen Folien, Karten und Lernständen löschen?">
+      <button class="warn">Kurs löschen</button>
+    </form>
+  </details>
+</section>
+{% endblock %}

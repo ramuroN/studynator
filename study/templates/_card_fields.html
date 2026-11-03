@@ -1,0 +1,10 @@
+<div class="type">
+  <label><input type="radio" name="type" value="basic" {% if card_type != "cloze" %}checked{% endif %}> Frage/Antwort</label>
+  <label><input type="radio" name="type" value="cloze" {% if card_type == "cloze" %}checked{% endif %}> Lückentext</label>
+</div>
+<label>Vorderseite <span class="hint">Lücke: {{ "{{" }}Begriff{{ "}}" }} · Formel: \( a^2 \)</span>
+  <textarea name="front" rows="3" required>{{ card_front|default("") }}</textarea>
+</label>
+<label>Rückseite <span class="hint">bei Lückentext optional</span>
+  <textarea name="back" rows="3">{{ card_back|default("") }}</textarea>
+</label>

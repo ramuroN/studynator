@@ -1,0 +1,34 @@
+# Beispiel für den Betrieb mit Docker Compose; Anleitung im README unter
+# «Betrieb». Studynator hat keine eigene Anmeldung: Davor gehört ein
+# Reverse-Proxy mit Anmeldung, der den Benutzernamen (USER_HEADER) und
+# X-Proxy-Secret setzt. Secrets nur in .env (siehe .env.example), nie hier.
+
+services:
+  studynator:
+    build: .
+    image: studynator:local
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Zurich
+      STUDY_TZ: Europe/Zurich
+      # Der Proxy schickt denselben Wert als Header X-Proxy-Secret mit.
+      PROXY_SECRET: "${PROXY_SECRET:?PROXY_SECRET in .env setzen}"
+      USER_HEADER: X-authentik-username
+      STUDY_AI_PROVIDER: anthropic
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY in .env setzen}"
+      STUDY_MODEL: claude-opus-5-5
+      STUDY_EFFORT: medium
+      # Deckel für alle Konten zusammen pro Kalendermonat, in USD.
+      STUDY_MONTHLY_BUDGET_USD: "10"
+      STUDY_MAX_UPLOAD_MB: "100"
+    # SQLite, PDFs, Seitenbilder und Tageskopien; muss UID 1000 gehören.
+    volumes:
+      - ./data:/data
+    # Nur lokal erreichbar; der Reverse-Proxy leitet hierher.
+    ports:
+      - "127.0.0.1:8000:8000"
+    mem_limit: 1g
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

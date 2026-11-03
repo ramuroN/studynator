@@ -1,0 +1,13 @@
+# Laufzeitdaten und Secrets gehören nicht ins Repository.
+.env
+.env.*
+*.env
+# Vorlage ohne Werte
+!.env.example
+data/
+.local-data/
+__pycache__/
+*.pyc
+.venv/
+COMMIT
+.claude/

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Lernen{% endblock %}
+{% block body_class %}{% if card %}learning{% endif %}{% endblock %}
+{% block content %}
+<p class="crumbs">
+  {% if deck %}<a href="/decks/{{ deck.id }}">{{ deck.name }}</a>{% else %}Alle Kurse{% endif %}
+  · <span class="due">{{ counts.due }}</span> fällig · <span class="new">{{ counts.new_now }}</span> neu
+</p>
+
+{% if paused %}
+<form class="notice" method="post" action="/cards/{{ paused.id }}/suspend">
+  <span>Ausgesetzt: «{{ srs.plain(paused.type, paused.front)|truncate(70) }}»</span>
+  <input type="hidden" name="on" value="0">
+  <input type="hidden" name="learn" value="{{ learn_key }}">
+  <button class="ghost">Wieder aufnehmen</button>
+</form>
+{% endif %}
+
+{% if card %}
+<article class="study" data-learn>
+  <p class="deck-name muted">{{ card_deck.name }}</p>
+  <div class="face front math">{{ srs.render_front(card.type, card.front)|safe }}</div>
+  <div class="answer" hidden>
+    <hr>
+    <div class="face back math">{{ srs.render_back(card.type, card.front, card.back)|safe }}</div>
+  </div>
+  {# Auf dem Handy als Leiste unten am Bildschirm, mit dem Daumen erreichbar. #}
+  <div class="learn-actions">
+    <button class="reveal primary" type="button">Antwort zeigen <kbd>Leertaste</kbd></button>
+    <form class="ratings" method="post" action="/learn/{{ card.id }}" hidden>
+      <input type="hidden" name="deck" value="{{ deck.id if deck else '' }}">
+      <input type="hidden" name="reps" value="{{ card.reps }}">
+      <input type="hidden" name="duration_ms" value="0">
+      {% for value in [1, 2, 3, 4] %}
+      <button name="rating" value="{{ value }}" class="rate r{{ value }}">
+        <span>{{ labels[value] }}</span><small>{{ preview[value] }}</small><kbd>{{ value }}</kbd>
+      </button>
+      {% endfor %}
+    </form>
+  </div>
+  {% if card.page_id %}
+  <a class="slide" href="/files/pages/{{ card.page_id }}.jpg" target="_blank" rel="noopener" hidden>
+    <img src="/files/pages/{{ card.page_id }}.jpg" alt="Folie zur Karte">
+  </a>
+  {% endif %}
+</article>
+{% else %}
+<section class="finished" {% if wait %}data-wait="{{ wait }}"{% endif %}>
+  <h1>Fertig für jetzt</h1>
+  {% if counts.new and not counts.new_now %}
+  <p class="muted">Das Tageslimit für neue Karten ({{ settings.new_per_day }}) ist erreicht.</p>
+  {% endif %}
+  {% if upcoming_text %}
+  <p class="muted">Die nächste Karte ist in {{ upcoming_text }} fällig.{% if wait %} Die Seite lädt dann neu.{% endif %}</p>
+  {% elif not counts.new %}
+  <p class="muted">Keine Karten fällig.</p>
+  {% endif %}
+  <a class="button" href="{{ '/decks/%d'|format(deck.id) if deck else '/' }}">Zurück</a>
+</section>
+{% endif %}
+
+{% if undo or card %}
+<div class="learn-tools">
+  {% if undo %}
+  <form method="post" action="/learn/undo" data-undo>
+    <input type="hidden" name="deck" value="{{ deck.id if deck else '' }}">
+    {% set undo_label = srs.RATING_LABELS[undo.rating] %}
+    <button class="ghost undo" title="Zuletzt bewertet: «{{ srs.plain(undo.type, undo.front)|truncate(80) }}» mit «{{ undo_label }}»">
+      <span aria-hidden="true">↶</span> Rückgängig <small>{{ undo_label }}</small> <kbd>Z</kbd>
+    </button>
+  </form>
+  {% endif %}
+  {% if card %}
+  <a class="button ghost" href="/cards/{{ card.id }}/edit?learn={{ learn_key }}">Bearbeiten</a>
+  <form method="post" action="/cards/{{ card.id }}/suspend">
+    <input type="hidden" name="on" value="1">
+    <input type="hidden" name="learn" value="{{ learn_key }}">
+    <button class="ghost" title="Die Karte bleibt erhalten, kommt aber nicht mehr dran, bis du sie wieder aufnimmst.">Aussetzen</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

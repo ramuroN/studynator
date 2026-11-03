@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Studynator",
+  "short_name": "Studynator",
+  "description": "Folien hochladen, Karteikarten vorschlagen lassen und mit FSRS lernen.",
+  "lang": "de-CH",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f5f1",
+  "theme_color": "#f6f5f1",
+  "icons": [
+    {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/static/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "shortcuts": [
+    {"name": "Lernen", "url": "/learn", "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"}]}
+  ]
+}

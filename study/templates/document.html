@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.filename }}{% endblock %}
+{% block body_class %}wide{% endblock %}
+{% block content %}
+{% set busy = doc.status in ("uploaded", "rendering", "generating") %}
+<p class="crumbs"><a href="/decks/{{ deck.id }}">{{ deck.name }}</a></p>
+<section class="hero" {% if busy %}data-poll="/api/documents/{{ doc.id }}/status" data-state="{{ doc.status }}:{{ doc.progress }}"{% endif %}>
+  <div>
+    <h1>{{ doc.filename }}</h1>
+    <p class="muted">
+      {{ doc.pages }} Seiten{% if has_original %} · <a href="/files/documents/{{ doc.id }}.pdf" target="_blank" rel="noopener">Original</a>{% else %} · aus einer Sicherung, ohne Original{% endif %}
+      {% if doc.cost_usd %} · KI-Kosten {{ "%.2f"|format(doc.cost_usd) }} USD{% endif %}
+      {% if doc.status in ("generating", "done", "failed") and doc.model %} · zuletzt {{ model_label(doc.model) }}{% endif %}
+    </p>
+  </div>
+  {% if open_count %}
+  <form method="post" action="/documents/{{ doc.id }}/accept-all" data-accept-all data-confirm="Alle {{ open_count }} offenen Vorschläge unverändert übernehmen?">
+    <button class="primary">Alle <span data-open-count>{{ open_count }}</span> übernehmen</button>
+  </form>
+  {% endif %}
+</section>
+{% if open_count %}
+<p class="keys-hint muted small">
+  Tastatur: <kbd>J</kbd> / <kbd>K</kbd> nächster und vorheriger Vorschlag · <kbd>A</kbd> übernehmen ·
+  <kbd>V</kbd> verwerfen · <kbd>E</kbd> bearbeiten, im Feld <kbd>Ctrl</kbd>+<kbd>Enter</kbd> übernehmen und <kbd>Esc</kbd> zurück.
+</p>
+{% endif %}
+
+{% if doc.status == "uploaded" or doc.status == "rendering" %}
+<p class="working">Die Seiten werden vorbereitet …</p>
+{% elif doc.status == "generating" %}
+<p class="working">Vorschläge werden erzeugt: Seite {{ doc.progress }} von {{ doc.gen_last or doc.pages }} fertig …</p>
+{% elif doc.status == "failed" %}
+<div class="error">
+  <p><strong>Fehler:</strong> {{ doc.error }}</p>
+  {% if doc.gen_last and doc.progress < doc.gen_last %}
+  <form method="post" action="/documents/{{ doc.id }}/resume"><button>Ab Seite {{ [doc.progress + 1, doc.gen_first or 1]|max }} weitermachen</button></form>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if doc.pages and not busy %}
+<details class="generate" {% if doc.status == "rendered" %}open{% endif %}>
+  <summary>{% if doc.status == "rendered" %}Kartenvorschläge erzeugen{% else %}Weitere Vorschläge erzeugen{% endif %}</summary>
+  <form class="inline" method="post" action="/documents/{{ doc.id }}/generate"
+        {% if settings.ai_provider != "fake" %}data-confirm="Vorschläge mit dem gewählten Modell erzeugen? Die Folien gehen an die Claude-API; die geschätzten Kosten stehen in der Auswahl."{% endif %}>
+    <label>Seite <input type="number" name="first" min="1" max="{{ doc.pages }}" value="1"></label>
+    <label>bis <input type="number" name="last" min="1" max="{{ doc.pages }}" value="{{ doc.pages }}"></label>
+    <label>Modell
+      <select name="model">
+        {% for model, label, cost in models %}
+        <option value="{{ model }}" {% if model == settings.model %}selected{% endif %}>{{ label }} · {% if cost < 0.01 %}unter 0.01{% else %}ca. {{ "%.2f"|format(cost) }}{% endif %} USD</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Denkaufwand
+      <select name="effort">
+        {% for value, label in efforts %}
+        <option value="{{ value }}" {% if value == settings.effort %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="primary">Erzeugen</button>
+  </form>
+  <p class="muted">
+    {% if deck.instructions %}Es gelten die <a href="/decks/{{ deck.id }}#anweisungen">Anweisungen des Kurses</a>{% else %}Für diesen Kurs gibt es noch keine <a href="/decks/{{ deck.id }}#anweisungen">Anweisungen an die KI</a>{% endif %};
+    dazu gehen deine jüngsten Entscheide zu Vorschlägen als Beispiele mit.
+  </p>
+  {% if settings.ai_provider == "fake" %}
+  <p class="muted">Entwicklungsmodus: Der Test-Anbieter macht aus der ersten Zeile jeder Seite eine Frage. Nichts geht an eine KI, nichts kostet.</p>
+  {% else %}
+  <p class="muted">Die Kosten in der Auswahl gelten für alle {{ doc.pages }} Seiten bei mittlerem Denkaufwand; «hoch» kostet etwas mehr. Die Folienbilder und ihr Text gehen dafür an die KI. Zum Vergleichen dasselbe PDF in einem zweiten Kurs mit einem anderen Modell erzeugen: im selben Kurs meidet die KI Karten, die es schon gibt.</p>
+  {% endif %}
+</details>
+{% endif %}
+
+{% for p in pages if p.id in by_page %}
+<section class="page" id="p{{ p.id }}">
+  <a class="thumb" href="/files/pages/{{ p.id }}.jpg" target="_blank" rel="noopener">
+    <img src="/files/pages/{{ p.id }}.jpg" alt="Seite {{ p.number }}" loading="lazy">
+    <span>Seite {{ p.number }}{% if not p.has_text %} · ohne Text{% endif %}</span>
+  </a>
+  <div class="suggestions">
+    {% for s in by_page[p.id] %}
+    {% if s.status == "open" %}
+    <form class="suggestion card-form" method="post" action="/suggestions/{{ s.id }}/accept">
+      {% if s.model %}<span class="badge model">{{ model_label(s.model) }}</span>{% endif %}
+      {% if s.similar_to %}<p class="similar">Ähnlich wie: «{{ s.similar_to }}»</p>{% endif %}
+      {% set card_type, card_front, card_back = s.type, s.front, s.back %}
+      {% include "_card_fields.html" %}
+      <div class="actions">
+        <button class="primary">Übernehmen</button>
+        <button formaction="/suggestions/{{ s.id }}/reject" formnovalidate class="ghost">Verwerfen</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="suggestion done {{ s.status }}">
+      <span class="badge">{{ "übernommen" if s.status == "accepted" else "verworfen" }}</span>
+      {% if s.model %}<span class="badge">{{ model_label(s.model) }}</span>{% endif %}
+      <span class="math">{{ srs.plain(s.type, s.front) }}</span>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+
+{% if without %}
+<p class="muted">Seiten ohne Vorschläge: {{ without|join(", ") }}</p>
+{% endif %}
+
+<section class="danger">
+  <form method="post" action="/documents/{{ doc.id }}/delete" data-confirm="Dokument mit Seitenbildern und offenen Vorschlägen löschen? Übernommene Karten bleiben.">
+    <button class="warn" {% if busy %}disabled{% endif %}>Dokument löschen</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,8 @@
+.git
+.claude
+.env
+.env.*
+data
+.local-data
+**/__pycache__
+*.pdf
