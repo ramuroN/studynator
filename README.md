@@ -51,6 +51,7 @@ python -m unittest discover -s tests -t tests
 - **Rückgängig** (Taste `Z`): nimmt die letzte Bewertung zurück, mehrmals Schritt für Schritt, solange sie höchstens eine Stunde alt ist. Dafür speichert jede Bewertung den Lernstand davor (`reviews.prev`); ältere und importierte Bewertungen lassen sich nicht zurücknehmen.
 - **Aussetzen:** Die Karte behält ihren Lernstand, kommt aber nicht mehr dran, bis sie wieder aufgenommen wird (direkt nach dem Aussetzen oder auf der Kartenseite). In der Sicherung als `suspended`.
 - Doppelt abgeschickte Bewertungen (zweimal getippt) zählen nur einmal; «Bearbeiten» beim Lernen führt nach dem Speichern zur selben Karte zurück.
+- **Verwerfen zurücknehmen:** Ein verworfener Vorschlag hat «Rückgängig» und ist danach wieder offen, samt Änderungen, die vor dem Verwerfen im Formular standen. Er zählt dann nicht mehr als verworfenes Beispiel für die KI. Übernommene Vorschläge bleiben übernommen; die Karte lässt sich auf der Kursseite löschen.
 - **Vorschläge prüfen:** Übernehmen und Verwerfen ohne Neuladen. Tasten: `J`/`K` nächster und vorheriger Vorschlag, `A` übernehmen, `V` verwerfen, `E` bearbeiten; im Feld `Ctrl`+`Enter` übernimmt, `Esc` verlässt es.
 
 ## Planung und Statistik
@@ -68,6 +69,8 @@ Alle übrigen Farben leitet `study/static/theme.js` ab: Flächen, Linien, Text, 
 ## Vorschläge steuern
 
 Auf der Kursseite stehen die «Anweisungen an die KI» (bis 2000 Zeichen). Jede Anfrage bekommt sie mit, dazu die jüngsten Entscheide im Kurs: was du vor dem Übernehmen geändert hast (vorher/nachher), was du unverändert übernommen und was du verworfen hast. Die Grundregeln für alle Kurse stehen in `SYSTEM_PROMPT` in `study/ai.py`.
+
+Vor dem Erzeugen wählst du mit Pillen die Kartentypen, einen oder mehrere: **Frage/Antwort**, **Lückentext** und **Zwei-Wege** (Begriff und Bedeutung, in beide Richtungen gelernt; beim Übernehmen entstehen zwei Karten, eine pro Richtung). Die KI bekommt nur die gewählten Typen im Antwortschema und im Auftrag; die Wahl gilt beim nächsten Mal im selben Kurs wieder. Zwei-Wege gibt es auch beim Anlegen von Hand, beim Bearbeiten einer Karte nicht.
 
 Beim Erzeugen wählst du Modell (Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1, Liste `MODELS` in `study/ai.py`) und Denkaufwand; die Auswahl zeigt die geschätzten Kosten für alle Seiten. Jeder Vorschlag merkt sich das Modell, das ihn geschrieben hat. Zum Vergleichen dasselbe PDF in zwei Kursen erzeugen, weil die KI im selben Kurs bestehende Karten meidet.
 

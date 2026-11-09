@@ -458,6 +458,31 @@ button.chip { padding: 4px 12px; min-height: 34px; border-radius: 99px; font-siz
 .suggestion { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .suggestion.done { display: flex; gap: 10px; align-items: baseline; padding: 8px 12px; color: var(--muted); }
 .suggestion.rejected .math { text-decoration: line-through; }
+.suggestion.done .reopen { margin: 0 0 0 auto; }
+.suggestion.done .reopen button, .suggestion.done > button.link { margin-left: auto; align-self: center; }
+
+/* Kartentypen vor dem Erzeugen: Pillen zum An- und Abwählen */
+.type-pills { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 4px; padding: 0; border: 0; }
+.type-pills legend { float: left; margin-right: 4px; padding: 0; font-weight: 600; font-size: .9rem; }
+.pill-toggle { position: relative; }
+.pill-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.pill-toggle span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 4px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: .9rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pill-toggle span::before { content: "+"; margin-right: 6px; }
+.pill-toggle input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.pill-toggle input:checked + span::before { content: "✓"; }
+.pill-toggle input:focus-visible + span { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.type-pills .hint { flex-basis: 100%; }
 .badge { font-size: .75rem; border: 1px solid var(--line); border-radius: 99px; padding: 0 8px; white-space: nowrap; }
 .similar { margin: 0; color: var(--due); font-size: .85rem; }
 .badge.model { justify-self: end; color: var(--muted); }

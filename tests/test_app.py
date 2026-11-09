@@ -273,6 +273,96 @@ class AppTests(TempEnv):
         self.assertEqual(self.client.post("/suggestions/3/reject", headers=ALICE).headers["location"],
                          "/documents/1#p3")
 
+    def generated(self, types=None):
+        deck_id = self.deck()
+        self.upload(deck_id, ["Eins\nErster Text", "Zwei\nZweiter Text"])
+        self.work()
+        data = {"first": 1, "last": 2}
+        if types is not None:
+            data["types"] = ["", *types]  # wie das Formular, mit leerem Merker
+        res = self.client.post("/documents/1/generate", data=data, headers=ALICE)
+        self.work()
+        return deck_id, res
+
+    def test_card_types_chosen_before_generating(self):
+        deck_id, res = self.generated(["twoway"])
+        self.assertIn("msg=generating", res.headers["location"])
+        conn = db.connect(get_settings().db_path)
+        self.assertEqual({r["type"] for r in conn.execute("SELECT type FROM suggestions")}, {"twoway"})
+        job = conn.execute("SELECT params FROM jobs WHERE kind = 'generate'").fetchone()
+        self.assertEqual(json.loads(job["params"])["types"], ["twoway"])
+        page = self.client.get("/documents/1", headers=ALICE).text
+        self.assertRegex(page, r'value="twoway" checked')
+        self.assertNotRegex(page, r'value="basic" checked>\s*<span>')
+        rejected = self.client.post("/suggestions/2/reject", headers={**ALICE, "Accept": "application/json"})
+        self.assertEqual(rejected.json()["text"], "Zwei ↔ Zweiter Text")
+        # Zwei-Wege übernehmen: zwei Karten, eine pro Richtung
+        self.client.post("/suggestions/1/accept", data={"type": "twoway", "front": "Eins", "back": "Erster Text"},
+                         headers=ALICE)
+        cards = [(r["type"], r["front"], r["back"]) for r in conn.execute("SELECT * FROM cards ORDER BY id")]
+        self.assertEqual(cards, [("basic", "Eins", "Erster Text"), ("basic", "Erster Text", "Eins")])
+        conn.close()
+
+    def test_no_type_chosen_starts_nothing(self):
+        _deck_id, res = self.generated([])
+        self.assertIn("msg=types-empty", res.headers["location"])
+        conn = db.connect(get_settings().db_path)
+        self.assertIsNone(conn.execute("SELECT 1 FROM jobs WHERE kind = 'generate'").fetchone())
+        conn.close()
+
+    def test_without_types_field_old_default_applies(self):
+        self.generated()
+        conn = db.connect(get_settings().db_path)
+        job = conn.execute("SELECT params FROM jobs WHERE kind = 'generate'").fetchone()
+        self.assertEqual(json.loads(job["params"])["types"], ["basic", "cloze"])
+        conn.close()
+
+    def test_resume_keeps_types(self):
+        self.generated(["cloze"])
+        conn = db.connect(get_settings().db_path)
+        conn.execute("UPDATE documents SET status = 'failed', gen_last = 2, progress = 1")
+        conn.commit()
+        self.client.post("/documents/1/resume", headers=ALICE)
+        params = json.loads(conn.execute("SELECT params FROM jobs ORDER BY id DESC").fetchone()["params"])
+        self.assertEqual(params["types"], ["cloze"])
+        conn.close()
+
+    def test_reject_can_be_undone(self):
+        self.generated()
+        as_json = {**ALICE, "Accept": "application/json"}
+        self.client.post("/suggestions/1/reject", headers=as_json)
+        conn = db.connect(get_settings().db_path)
+        self.assertEqual(len(worker.guidance(conn, 1).rejected), 1)
+        page = self.client.get("/documents/1", headers=ALICE).text
+        self.assertIn('action="/suggestions/1/reopen"', page)
+        res = self.client.post("/suggestions/1/reopen", headers=as_json)
+        self.assertEqual(res.json()["status"], "open")
+        self.assertEqual(res.json()["open"], 2)
+        row = conn.execute("SELECT status, decided FROM suggestions WHERE id = 1").fetchone()
+        self.assertEqual((row["status"], row["decided"]), ("open", None))
+        self.assertEqual(worker.guidance(conn, 1).rejected, [])
+        # Übernommene bleiben übernommen; ohne JSON zurück zur Folie
+        self.client.post("/suggestions/2/accept", data={"type": "basic", "front": "F", "back": "B"}, headers=ALICE)
+        res = self.client.post("/suggestions/2/reopen", headers=ALICE)
+        self.assertEqual(res.headers["location"], "/documents/1#p2")
+        self.assertEqual(conn.execute("SELECT status FROM suggestions WHERE id = 2").fetchone()[0], "accepted")
+        self.assertEqual(self.client.post("/suggestions/1/reopen", headers=BOB).status_code, 404)
+        conn.close()
+
+    def test_manual_twoway_card_and_edit_without_twoway(self):
+        deck_id = self.deck()
+        res = self.client.post(f"/decks/{deck_id}/cards", data={"type": "twoway", "front": "Hund", "back": "dog"},
+                               headers=ALICE)
+        self.assertIn("msg=cards-added", res.headers["location"])
+        conn = db.connect(get_settings().db_path)
+        rows = conn.execute("SELECT id, front, back FROM cards ORDER BY id").fetchall()
+        self.assertEqual([(r["front"], r["back"]) for r in rows], [("Hund", "dog"), ("dog", "Hund")])
+        self.assertNotIn('value="twoway"', self.client.get(f"/cards/{rows[0]['id']}/edit", headers=ALICE).text)
+        self.client.post(f"/cards/{rows[0]['id']}", data={"type": "twoway", "front": "Hund", "back": "dog"},
+                         headers=ALICE)
+        self.assertEqual(conn.execute("SELECT type FROM cards WHERE id = ?", (rows[0]["id"],)).fetchone()[0], "basic")
+        conn.close()
+
     def test_manifest_and_icons(self):
         res = self.client.get("/static/manifest.webmanifest")
         self.assertEqual(res.status_code, 200)

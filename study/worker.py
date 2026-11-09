@@ -198,6 +198,8 @@ def run_generate(conn: sqlite3.Connection, settings: Settings, job: sqlite3.Row,
         return
     params = json.loads(job["params"])
     first, last = params.get("first", 1), params.get("last", doc["pages"])
+    # Aufträge von vor der Typwahl haben keine Angabe: wie damals.
+    types = ai.clean_types(params.get("types")) or ai.DEFAULT_TYPES
     # Nach einem Neustart mitten im Job (reset_running) nicht von vorn: fertige
     # Abschnitte sind schon bezahlt und ihre Vorschläge gespeichert. Ein neuer
     # Auftrag setzt progress auf first - 1, dort ändert das nichts.
@@ -221,7 +223,7 @@ def run_generate(conn: sqlite3.Connection, settings: Settings, job: sqlite3.Row,
     for start in range(0, len(inputs), size):
         chunk = inputs[start:start + size]
         # Pro Abschnitt neu: Entscheide, die der Nutzer währenddessen trifft, zählen schon.
-        ctx = ai.Context(doc["deck_name"], doc["pages"], existing, guidance(conn, doc["deck_id"]))
+        ctx = ai.Context(doc["deck_name"], doc["pages"], existing, guidance(conn, doc["deck_id"]), types)
         if provider.name != "fake":
             spent = db.month_spent(conn)
             needed = ai.estimate_usd(chunk, provider.model, size, len(ai.guidance_text(ctx.guidance)) // 3)

@@ -122,7 +122,7 @@
   <details class="add">
     <summary>Karte von Hand anlegen</summary>
     <form class="card-form" method="post" action="/decks/{{ deck.id }}/cards">
-      {% set card_type = "basic" %}
+      {% set card_type, allow_twoway = "basic", true %}
       {% include "_card_fields.html" %}
       <div class="actions"><button class="primary">Anlegen</button></div>
     </form>

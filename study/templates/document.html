@@ -44,6 +44,18 @@
   <summary>{% if doc.status == "rendered" %}Kartenvorschläge erzeugen{% else %}Weitere Vorschläge erzeugen{% endif %}</summary>
   <form class="inline" method="post" action="/documents/{{ doc.id }}/generate"
         {% if settings.ai_provider != "fake" %}data-confirm="Vorschläge mit dem gewählten Modell erzeugen? Die Folien gehen an die Claude-API; die geschätzten Kosten stehen in der Auswahl."{% endif %}>
+    <fieldset class="type-pills" data-type-pills>
+      <legend>Kartentypen</legend>
+      {# Leerer Merker: so erkennt der Server «nichts angekreuzt». #}
+      <input type="hidden" name="types" value="">
+      {% for value, label in type_labels.items() %}
+      <label class="pill-toggle">
+        <input type="checkbox" name="types" value="{{ value }}" {% if value in chosen_types %}checked{% endif %}>
+        <span>{{ label }}</span>
+      </label>
+      {% endfor %}
+      <span class="hint">Zwei-Wege: Begriff und Bedeutung, gelernt in beide Richtungen (zwei Karten).</span>
+    </fieldset>
     <label>Seite <input type="number" name="first" min="1" max="{{ doc.pages }}" value="1"></label>
     <label>bis <input type="number" name="last" min="1" max="{{ doc.pages }}" value="{{ doc.pages }}"></label>
     <label>Modell
@@ -67,7 +79,7 @@
     dazu gehen deine jüngsten Entscheide zu Vorschlägen als Beispiele mit.
   </p>
   {% if settings.ai_provider == "fake" %}
-  <p class="muted">Entwicklungsmodus: Der Test-Anbieter macht aus der ersten Zeile jeder Seite eine Frage. Nichts geht an eine KI, nichts kostet.</p>
+  <p class="muted">Entwicklungsmodus: Der Test-Anbieter macht aus der ersten Zeile jeder Seite eine Karte im ersten gewählten Typ. Nichts geht an eine KI, nichts kostet.</p>
   {% else %}
   <p class="muted">Die Kosten in der Auswahl gelten für alle {{ doc.pages }} Seiten bei mittlerem Denkaufwand; «hoch» kostet etwas mehr. Die Folienbilder und ihr Text gehen dafür an die KI. Zum Vergleichen dasselbe PDF in einem zweiten Kurs mit einem anderen Modell erzeugen: im selben Kurs meidet die KI Karten, die es schon gibt.</p>
   {% endif %}
@@ -86,7 +98,7 @@
     <form class="suggestion card-form" method="post" action="/suggestions/{{ s.id }}/accept">
       {% if s.model %}<span class="badge model">{{ model_label(s.model) }}</span>{% endif %}
       {% if s.similar_to %}<p class="similar">Ähnlich wie: «{{ s.similar_to }}»</p>{% endif %}
-      {% set card_type, card_front, card_back = s.type, s.front, s.back %}
+      {% set card_type, card_front, card_back, allow_twoway = s.type, s.front, s.back, true %}
       {% include "_card_fields.html" %}
       <div class="actions">
         <button class="primary">Übernehmen</button>
@@ -97,7 +109,12 @@
     <div class="suggestion done {{ s.status }}">
       <span class="badge">{{ "übernommen" if s.status == "accepted" else "verworfen" }}</span>
       {% if s.model %}<span class="badge">{{ model_label(s.model) }}</span>{% endif %}
-      <span class="math">{{ srs.plain(s.type, s.front) }}</span>
+      <span class="math">{{ srs.plain(s.type, s.front) }}{% if s.type == "twoway" %} ↔ {{ s.back }}{% endif %}</span>
+      {% if s.status == "rejected" %}
+      <form class="reopen" method="post" action="/suggestions/{{ s.id }}/reopen">
+        <button class="link" title="Wieder offen; zählt nicht mehr als verworfen">Rückgängig</button>
+      </form>
+      {% endif %}
     </div>
     {% endif %}
     {% endfor %}

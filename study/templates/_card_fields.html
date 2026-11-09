@@ -1,6 +1,9 @@
 <div class="type">
-  <label><input type="radio" name="type" value="basic" {% if card_type != "cloze" %}checked{% endif %}> Frage/Antwort</label>
+  <label><input type="radio" name="type" value="basic" {% if card_type not in ("cloze", "twoway") %}checked{% endif %}> Frage/Antwort</label>
   <label><input type="radio" name="type" value="cloze" {% if card_type == "cloze" %}checked{% endif %}> Lückentext</label>
+  {% if allow_twoway %}
+  <label title="Wird in beide Richtungen gelernt: beim Übernehmen entstehen zwei Karten."><input type="radio" name="type" value="twoway" {% if card_type == "twoway" %}checked{% endif %}> Zwei-Wege</label>
+  {% endif %}
 </div>
 <label>Vorderseite <span class="hint">Lücke: {{ "{{" }}Begriff{{ "}}" }} · Formel: \( a^2 \)</span>
   <textarea name="front" rows="3" required>{{ card_front|default("") }}</textarea>

@@ -120,15 +120,32 @@ function setupSuggestions() {
     if (index < 0) select(forms[0]);
     else select(forms[Math.min(forms.length - 1, Math.max(0, index + delta))]);
   };
+  // Ausblenden statt entfernen: «Rückgängig» kann wieder offene Vorschläge bringen.
   const updateCount = (open) => {
     if (!acceptAll) return;
-    if (!open) {
-      acceptAll.remove();
-      document.querySelector(".keys-hint")?.remove();
-      return;
-    }
+    const hint = document.querySelector(".keys-hint");
+    acceptAll.hidden = !open;
+    if (hint) hint.hidden = !open;
     acceptAll.querySelector("[data-open-count]").textContent = String(open);
     acceptAll.dataset.confirm = `Alle ${open} offenen Vorschläge unverändert übernehmen?`;
+  };
+
+  // Verwerfen zurücknehmen: das gemerkte Formular kommt wieder, samt Änderungen.
+  const reopen = async (done, form, button) => {
+    button.disabled = true;
+    try {
+      const url = form.action.replace(/\/accept$/, "/reopen");
+      const res = await fetch(url, { method: "POST", headers: { Accept: "application/json" } });
+      const data = await res.json();
+      if (!data.ok || data.status !== "open") throw new Error(String(res.status));
+      form.classList.remove("busy");
+      done.replaceWith(form);
+      updateCount(data.open);
+      select(form);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Nicht gespeichert, nochmals";
+    }
   };
 
   const decide = async (form, reject) => {
@@ -153,6 +170,14 @@ function setupSuggestions() {
       text.className = "math";
       text.textContent = data.text;
       done.append(badge, text);
+      if (data.status === "rejected") {
+        const undo = document.createElement("button");
+        undo.type = "button";
+        undo.className = "link";
+        undo.textContent = "Rückgängig";
+        undo.addEventListener("click", () => reopen(done, form, undo));
+        done.append(undo);
+      }
       const wasCurrent = form === current;
       form.replaceWith(done);
       renderMath(done);
@@ -184,7 +209,8 @@ function setupSuggestions() {
     }
   });
   document.addEventListener("keydown", (event) => {
-    const field = event.target.closest("input, textarea, select");
+    // Nur Schreibfelder sperren die Tasten, nicht Ankreuzfelder und Optionsknöpfe.
+    const field = event.target.closest('input:not([type="checkbox"]):not([type="radio"]), textarea, select');
     if (field) {
       const form = field.closest("form.suggestion");
       if (!form) return;
@@ -357,6 +383,13 @@ function setupTheme(menu) {
   });
 }
 
+// Kartentypen vor dem Erzeugen: mindestens einer bleibt angewählt.
+function setupTypePills(group) {
+  group.addEventListener("change", (event) => {
+    if (!group.querySelector('input[type="checkbox"]:checked')) event.target.checked = true;
+  });
+}
+
 // Vorlagen für die Kurs-Anweisungen: ins leere Feld einsetzen, sonst anhängen.
 document.addEventListener("click", (event) => {
   const chip = event.target.closest("[data-template]");
@@ -404,6 +437,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const undo = document.querySelector("[data-undo]");
   if (undo) setupUndo(undo);
   if (document.querySelector("form.suggestion")) setupSuggestions();
+  document.querySelectorAll("[data-type-pills]").forEach(setupTypePills);
   const themeMenu = document.querySelector("[data-theme-menu]");
   if (themeMenu) setupTheme(themeMenu);
   const wait = document.querySelector("[data-wait]");

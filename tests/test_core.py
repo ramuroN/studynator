@@ -142,6 +142,32 @@ class AiTests(TempEnv):
         self.assertLess(len(text), 2000)
         self.assertFalse(ai.Guidance())
 
+    def test_chosen_types_reach_schema_prompt_and_parser(self):
+        provider = ai.AnthropicProvider("claude-opus-5-5", "medium", client=object())
+        ctx = ai.Context("Bio", 1, types=("cloze", "twoway"))
+        params = provider.request([self.page(1)], ctx)
+        enum = params["output_config"]["format"]["schema"]["properties"]["cards"]["items"]["properties"]["type"]["enum"]
+        self.assertEqual(enum, ["cloze", "twoway"])
+        self.assertIn('Erlaubte Kartentypen: "cloze" (Lückentext), "twoway" (Zwei-Wege).',
+                      params["messages"][0]["content"][0]["text"])
+        self.assertIn('Typ "twoway"', params["system"])
+        raw = json.dumps({"cards": [
+            {"page": 1, "type": "basic", "front": "Nicht gewählt", "back": "x"},
+            {"page": 1, "type": "twoway", "front": "Mitochondrium", "back": ""},
+            {"page": 1, "type": "twoway", "front": "Mitochondrium", "back": "Kraftwerk der Zelle"},
+        ]})
+        cards = ai.parse_cards(raw, {1}, ctx.types)
+        self.assertEqual([(c.type, c.back) for c in cards], [("twoway", "Kraftwerk der Zelle")])
+        self.assertEqual(ai.clean_types(["twoway", "x", "basic", ""]), ("basic", "twoway"))
+        self.assertEqual(ai.clean_types([]), ())
+
+    def test_fake_provider_follows_types(self):
+        page = self.page(1, "Glykolyse\nzerlegt Glukose")
+        cloze = ai.FakeProvider().generate([page], ai.Context("K", 1, types=("cloze",))).cards[0]
+        self.assertEqual((cloze.type, cloze.front, cloze.back), ("cloze", "Thema der Folie: {{Glykolyse}}", ""))
+        twoway = ai.FakeProvider().generate([page], ai.Context("K", 1, types=("twoway",))).cards[0]
+        self.assertEqual((twoway.type, twoway.front, twoway.back), ("twoway", "Glykolyse", "zerlegt Glukose"))
+
     def test_fake_provider_keeps_lines(self):
         result = ai.FakeProvider().generate([self.page(1, "Titel\n\uf0a7 Erstens\n\uf0a7 Zweitens")],
                                             ai.Context("K", 1))

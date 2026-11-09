@@ -46,6 +46,8 @@ MESSAGES = {
     "generating": "Vorschläge werden erzeugt.",
     "doc-deleted": "Dokument gelöscht; die Karten bleiben.",
     "card-added": "Karte angelegt.",
+    "cards-added": "Zwei Karten angelegt, eine pro Richtung.",
+    "types-empty": "Mindestens einen Kartentyp wählen.",
     "card-saved": "Karte gespeichert.",
     "card-deleted": "Karte gelöscht.",
     "card-suspended": "Karte ausgesetzt; sie kommt beim Lernen nicht mehr.",
@@ -261,6 +263,10 @@ def counts(conn: sqlite3.Connection, user: User, deck_id: int | None = None,
 
 def insert_card(conn: sqlite3.Connection, user: User, deck_id: int, kind: str, front: str, back_text: str,
                 page_id: int | None) -> int:
+    if kind == "twoway":
+        # Zwei-Wege: je eine Karte pro Richtung, jede mit eigenem Lernstand.
+        insert_card(conn, user, deck_id, "basic", front, back_text, page_id)
+        return insert_card(conn, user, deck_id, "basic", back_text, front, page_id)
     card = srs.new_card()
     cur = conn.execute(
         "INSERT INTO cards (user_id, deck_id, page_id, type, front, back, fsrs, due, created, updated) "
@@ -270,10 +276,12 @@ def insert_card(conn: sqlite3.Connection, user: User, deck_id: int, kind: str, f
     return cur.lastrowid
 
 
-def clean_card(kind: str, front: str, back_text: str) -> tuple[str, str, str] | None:
-    kind = kind if kind in ai.CARD_TYPES else "basic"
+def clean_card(kind: str, front: str, back_text: str, kinds: tuple[str, ...] = ai.CARD_TYPES
+               ) -> tuple[str, str, str] | None:
+    """kinds: beim Anlegen und Übernehmen auch «twoway», beim Bearbeiten nicht."""
+    kind = kind if kind in kinds else "basic"
     front, back_text = front.strip(), back_text.strip()
-    if not front or (kind == "basic" and not back_text):
+    if not front or (kind in ("basic", "twoway") and not back_text):
         return None
     return kind, front, back_text
 
@@ -623,7 +631,18 @@ def show_document(request: Request, document_id: int, user: User = Depends(curre
     return page(request, "document.html", user, conn, doc=doc, deck=deck, pages=pages, by_page=by_page,
                 without=without, open_count=open_count, models=models,
                 has_original=worker.original_pdf(settings, user.id, document_id).exists(),
-                efforts=ai.efforts_with(settings.effort), model_label=ai.model_label)
+                efforts=ai.efforts_with(settings.effort), model_label=ai.model_label,
+                type_labels=ai.TYPE_LABELS, chosen_types=last_types(conn, deck["id"]))
+
+
+def last_types(conn: sqlite3.Connection, deck_id: int) -> tuple[str, ...]:
+    """Kartentypen des letzten Auftrags im Kurs, damit die Wahl bleibt."""
+    row = conn.execute(
+        "SELECT j.params FROM jobs j JOIN documents d ON d.id = j.document_id "
+        "WHERE d.deck_id = ? AND j.kind = 'generate' ORDER BY j.id DESC LIMIT 1",
+        (deck_id,),
+    ).fetchone()
+    return (ai.clean_types(json.loads(row["params"]).get("types")) if row else ()) or ai.DEFAULT_TYPES
 
 
 @app.get("/api/documents/{document_id}/status")
@@ -634,11 +653,16 @@ def document_status(document_id: int, user: User = Depends(current_user), conn: 
 
 @app.post("/documents/{document_id}/generate")
 def generate(document_id: int, first: int = Form(1), last: int = Form(0), model: str = Form(""),
-             effort: str = Form(""), user: User = Depends(current_user),
+             effort: str = Form(""), types: list[str] = Form([]), user: User = Depends(current_user),
              conn: sqlite3.Connection = Depends(get_conn)):
     doc = own_document(conn, user, document_id)
     if doc["status"] in ("uploaded", "rendering", "generating") or doc["pages"] == 0:
         return back(f"/documents/{document_id}")
+    # Das Formular schickt immer ein leeres «types» mit; fehlt das Feld ganz
+    # (ältere Aufrufe), gelten die bisherigen Typen.
+    types = ai.clean_types(types) if types else ai.DEFAULT_TYPES
+    if not types:
+        return back(f"/documents/{document_id}", "types-empty")
     settings = get_settings()
     # Nur Werte aus der Liste; alles andere fällt auf den Standard zurück.
     if model not in dict(ai.models_with(settings.model)):
@@ -654,7 +678,8 @@ def generate(document_id: int, first: int = Form(1), last: int = Form(0), model:
         "WHERE id = ?",
         (first, last, first - 1, document_id),
     )
-    worker.enqueue(conn, "generate", document_id, {"first": first, "last": last, "model": model, "effort": effort})
+    worker.enqueue(conn, "generate", document_id,
+                   {"first": first, "last": last, "model": model, "effort": effort, "types": list(types)})
     conn.commit()
     return back(f"/documents/{document_id}", "generating")
 
@@ -666,13 +691,13 @@ def resume(document_id: int, user: User = Depends(current_user), conn: sqlite3.C
     if doc["status"] != "failed" or not doc["gen_last"]:
         return back(f"/documents/{document_id}")
     first = max(doc["gen_first"] or 1, doc["progress"] + 1)
-    # Mit demselben Modell und Denkaufwand wie der abgebrochene Auftrag.
+    # Mit demselben Modell, Denkaufwand und denselben Kartentypen wie der abgebrochene Auftrag.
     last_job = conn.execute(
         "SELECT params FROM jobs WHERE document_id = ? AND kind = 'generate' ORDER BY id DESC LIMIT 1", (document_id,)
     ).fetchone()
     previous = json.loads(last_job["params"]) if last_job else {}
     params = {"first": first, "last": doc["gen_last"]}
-    params.update({k: previous[k] for k in ("model", "effort") if k in previous})
+    params.update({k: previous[k] for k in ("model", "effort", "types") if k in previous})
     conn.execute("UPDATE documents SET status = 'generating', error = NULL WHERE id = ?", (document_id,))
     worker.enqueue(conn, "generate", document_id, params)
     conn.commit()
@@ -708,8 +733,13 @@ def decided(request: Request, conn: sqlite3.Connection, suggestion_id: int) -> R
         return back(f"/documents/{s['document_id']}#p{s['page_id']}")
     open_count = conn.execute("SELECT COUNT(*) FROM suggestions WHERE document_id = ? AND status = 'open'",
                               (s["document_id"],)).fetchone()[0]
-    return JSONResponse({"ok": True, "status": s["status"], "text": srs.plain(s["type"], s["front"]),
-                         "open": open_count})
+    return JSONResponse({"ok": True, "status": s["status"], "text": suggestion_text(s), "open": open_count})
+
+
+def suggestion_text(s: sqlite3.Row) -> str:
+    """Kurzform für entschiedene Vorschläge; Zwei-Wege mit beiden Seiten."""
+    text = srs.plain(s["type"], s["front"])
+    return f"{text} ↔ {s['back']}" if s["type"] == "twoway" else text
 
 
 @app.post("/suggestions/{suggestion_id}/accept")
@@ -719,7 +749,7 @@ def accept(request: Request, suggestion_id: int, type: str = Form("basic"), fron
     s = own_suggestion(conn, user, suggestion_id)
     if s["status"] != "open":
         return decided(request, conn, suggestion_id)
-    cleaned = clean_card(type, front, back_text)
+    cleaned = clean_card(type, front, back_text, ai.SUGGESTION_TYPES)
     if cleaned is None:
         if wants_json(request):
             return JSONResponse({"ok": False, "error": MESSAGES["empty"]}, status_code=400)
@@ -740,6 +770,18 @@ def reject(request: Request, suggestion_id: int, user: User = Depends(current_us
     s = own_suggestion(conn, user, suggestion_id)
     if s["status"] == "open":
         conn.execute("UPDATE suggestions SET status = 'rejected', decided = ? WHERE id = ?", (db.now(), s["id"]))
+        conn.commit()
+    return decided(request, conn, suggestion_id)
+
+
+@app.post("/suggestions/{suggestion_id}/reopen")
+def reopen(request: Request, suggestion_id: int, user: User = Depends(current_user),
+           conn: sqlite3.Connection = Depends(get_conn)):
+    """Verwerfen zurücknehmen: Der Vorschlag ist wieder offen und zählt nicht
+    mehr als verworfenes Beispiel für die KI. Übernommene bleiben übernommen."""
+    s = own_suggestion(conn, user, suggestion_id)
+    if s["status"] == "rejected":
+        conn.execute("UPDATE suggestions SET status = 'open', decided = NULL WHERE id = ?", (s["id"],))
         conn.commit()
     return decided(request, conn, suggestion_id)
 
@@ -781,12 +823,12 @@ def document_file(document_id: int, user: User = Depends(current_user), conn: sq
 def add_card(deck_id: int, type: str = Form("basic"), front: str = Form(""), back_text: str = Form("", alias="back"),
              user: User = Depends(current_user), conn: sqlite3.Connection = Depends(get_conn)):
     own_deck(conn, user, deck_id)
-    cleaned = clean_card(type, front, back_text)
+    cleaned = clean_card(type, front, back_text, ai.SUGGESTION_TYPES)
     if cleaned is None:
         return back(f"/decks/{deck_id}", "empty")
     insert_card(conn, user, deck_id, *cleaned, None)
     conn.commit()
-    return back(f"/decks/{deck_id}", "card-added")
+    return back(f"/decks/{deck_id}", "cards-added" if cleaned[0] == "twoway" else "card-added")
 
 
 @app.get("/cards/{card_id}/edit")
